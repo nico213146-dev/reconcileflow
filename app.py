@@ -12,17 +12,17 @@ st.set_page_config(page_title="ReconcileFlow - Auditoría B2B", layout="centered
 
 st.markdown("""
     <style>
-    /* Ocultar elementos por defecto de Streamlit para que no parezca un script */
-    #MainMenu {visibility: hidden;}
+    /* Ocultar menú superior y pie de página en Streamlit moderno */
+    [data-testid="stHeader"] {visibility: hidden;}
+    [data-testid="stToolbar"] {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
     
-    /* Fondo general */
+    /* Fondo general un poco más oscuro para que contraste el blanco */
     .stApp {
-        background-color: #F8F9FA;
+        background-color: #F0F2F6;
     }
     
-    /* Estilo de los botones principales */
+    /* Estilo del botón de pago */
     .stButton>button {
         background-color: #1A2B4C;
         color: white;
@@ -30,27 +30,13 @@ st.markdown("""
         border: none;
         padding: 10px 24px;
         font-weight: bold;
-        transition: all 0.3s ease;
     }
     .stButton>button:hover {
         background-color: #E63946;
         color: white;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(230, 57, 70, 0.2);
-    }
-    
-    /* Cajas de subida de archivos y paneles */
-    .stFileUploader {
-        background-color: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
     }
     </style>
 """, unsafe_allow_html=True)
-st.title("🛡️ ReconcileFlow")
-st.subheader("Auditoría y Conciliación Multicanal (Shopify / Stripe / CSV)")
-st.markdown("Subí tus reportes de ventas y pasarela de cobro para auditar cobros no depositados, tasas excesivas y reembolsos duplicados.")
 
 col1, col2 = st.columns(2)
 with col1:
