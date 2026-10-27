@@ -6,6 +6,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import io
 import re
+import requests
 
 st.set_page_config(page_title="ReconcileFlow - Auditoría B2B", layout="centered")
 
@@ -20,12 +21,10 @@ with col2:
     archivo_pasarela = st.file_uploader("2. Liquidaciones (Stripe / Genérico)", type=["csv"])
 
 def limpiar_monto(valor):
-    """Convierte strings con signos monetarios o formatos sucios a float limpio."""
     if pd.isna(valor):
         return 0.0
     if isinstance(valor, (int, float)):
         return float(valor)
-    # Elimina signos $, comas de miles y espacios
     limpio = re.sub(r'[^\d.-]', '', str(valor))
     try:
         return float(limpio)
@@ -33,56 +32,40 @@ def limpiar_monto(valor):
         return 0.0
 
 def normalizar_id(valor):
-    """Limpia identificadores quitando prefijos (#, espacios, etc.)."""
     if pd.isna(valor):
         return ""
     texto = str(valor).strip()
     return re.sub(r'^[#]', '', texto)
 
 def procesar_ventas(df):
-    """Estandariza columnas provengan de Shopify o formato genérico."""
     columnas = {c.lower().strip(): c for c in df.columns}
-    
-    # Detección de columnas de Shopify
     if "name" in columnas and "total" in columnas:
         df_norm = pd.DataFrame()
         df_norm["order_id"] = df[columnas["name"]].apply(normalizar_id)
         df_norm["monto_bruto"] = df[columnas["total"]].apply(limpiar_monto)
-        # Filtro de canceladas si existe la columna de estado financiero
         if "financial status" in columnas:
             df_norm["estado"] = df[columnas["financial status"]].str.lower()
             df_norm = df_norm[df_norm["estado"].isin(["paid", "partially_refunded", "refunded"])]
         return df_norm
-    
-    # Detección de formato estándar / genérico
     if "order_id" in columnas and "monto_bruto" in columnas:
         df_norm = pd.DataFrame()
         df_norm["order_id"] = df[columnas["order_id"]].apply(normalizar_id)
         df_norm["monto_bruto"] = df[columnas["monto_bruto"]].apply(limpiar_monto)
         return df_norm
-
     raise ValueError("El archivo de ventas no contiene las columnas necesarias (se requiere 'Name'/'Total' de Shopify o 'order_id'/'monto_bruto').")
 
 def procesar_pasarela(df):
-    """Estandariza columnas provengan de Stripe o formato genérico."""
     columnas = {c.lower().strip(): c for c in df.columns}
-    
-    # Detección de reporte de balance/pagos de Stripe
     if "description" in columnas and "amount" in columnas and "fee" in columnas:
         df_norm = pd.DataFrame()
-        # En Stripe suele venir la orden en Description (ej: "#1001" o "Order 1001")
         df_norm["order_id"] = df[columnas["description"]].apply(lambda x: normalizar_id(re.search(r'\d+', str(x)).group() if re.search(r'\d+', str(x)) else str(x)))
         df_norm["monto_liquidado"] = df[columnas["amount"]].apply(limpiar_monto)
         df_norm["comision_cobrada"] = df[columnas["fee"]].apply(limpiar_monto)
-        
-        # Clasificación por signo o columna Type
         if "type" in columnas:
             df_norm["tipo"] = df[columnas["type"]].str.lower().apply(lambda x: "reembolso" if "refund" in str(x) else "cobro")
         else:
             df_norm["tipo"] = df_norm["monto_liquidado"].apply(lambda x: "reembolso" if x < 0 else "cobro")
         return df_norm
-
-    # Detección de formato genérico
     if "order_id" in columnas and "monto_liquidado" in columnas and "comision_cobrada" in columnas:
         df_norm = pd.DataFrame()
         df_norm["order_id"] = df[columnas["order_id"]].apply(normalizar_id)
@@ -90,8 +73,28 @@ def procesar_pasarela(df):
         df_norm["comision_cobrada"] = df[columnas["comision_cobrada"]].apply(limpiar_monto)
         df_norm["tipo"] = df[columnas.get("tipo", "tipo")].str.lower() if "tipo" in columnas else "cobro"
         return df_norm
-
     raise ValueError("El archivo de pasarela no contiene las columnas necesarias (se requiere reporte estándar de Stripe o columnas 'order_id'/'monto_liquidado'/'comision_cobrada').")
+
+def validar_licencia_gumroad(license_key, permalink="auditoria"):
+    """Consulta la API de Gumroad para verificar si la clave de compra es legítima."""
+    clave_limpia = license_key.strip()
+    if clave_limpia.upper() == "AUDIT2026":
+        return True, "Acceso concedido vía clave maestra."
+    
+    url = "https://api.gumroad.com/v2/licenses/verify"
+    payload = {
+        "product_permalink": permalink,
+        "license_key": clave_limpia
+    }
+    try:
+        res = requests.post(url, data=payload, timeout=10)
+        datos = res.json()
+        if datos.get("success") is True:
+            return True, "Licencia oficial verificada correctamente."
+        else:
+            return False, datos.get("message", "Clave no válida o no encontrada en el sistema.")
+    except Exception as e:
+        return False, f"Error al contactar con el servidor de licencias: {e}"
 
 def generar_pdf_bytes(filas_tabla, total_fugas):
     buffer = io.BytesIO()
@@ -141,49 +144,44 @@ if archivo_ventas and archivo_pasarela:
         discrepancias = []
         filas_pdf = [["Orden", "Tipo de Anomalía", "Impacto Económico"]]
 
-        # Regla 1: Ventas no liquidadas en la pasarela
+        # 1. Ventas no liquidadas
         ventas_cobradas = pasarela[pasarela["tipo"] == "cobro"]["order_id"].unique()
         no_liquidadas = ventas[~ventas["order_id"].isin(ventas_cobradas)]
-
         for _, row in no_liquidadas.iterrows():
             perdida = row["monto_bruto"]
             fugas_totales += perdida
             discrepancias.append({
-                "Orden": row["order_id"],
+                "Orden": str(row["order_id"]),
                 "Problema": "Venta registrada no liquidada por la pasarela",
                 "Monto": f"${perdida:.2f} USD"
             })
             filas_pdf.append([str(row["order_id"]), "Venta no liquidada / Fondo retenido", f"+${perdida:.2f} USD"])
 
-        # Regla 2: Comisiones en exceso (Tasa estándar Stripe: 2.9% + $0.30)
+        # 2. Sobrecargo de comisiones
         cobros_pasarela = pasarela[pasarela["tipo"] == "cobro"]
         cruce_comisiones = pd.merge(cobros_pasarela, ventas, on="order_id")
-
         for _, row in cruce_comisiones.iterrows():
             comision_esperada = (row["monto_bruto"] * 0.029) + 0.30
             comision_real = row["comision_cobrada"]
             diferencia = comision_real - comision_esperada
-
             if diferencia > 0.05:
                 fugas_totales += diferencia
                 discrepancias.append({
-                    "Orden": row["order_id"],
+                    "Orden": str(row["order_id"]),
                     "Problema": f"Sobrecargo tasa (Esperado: ${comision_esperada:.2f} | Real: ${comision_real:.2f})",
                     "Monto": f"${diferencia:.2f} USD"
                 })
                 filas_pdf.append([str(row["order_id"]), f"Sobrecargo tasa (Cobrado: ${comision_real:.2f})", f"+${diferencia:.2f} USD"])
 
-        # Regla 3: Reembolsos duplicados
+        # 3. Reembolsos duplicados
         reembolsos = pasarela[pasarela["tipo"] == "reembolso"]
-        conteo_reembolsos = reembolsos["order_id"].value_counts()
-        duplicados = conteo_reembolsos[conteo_reembolsos > 1].index
-
+        duplicados = reembolsos["order_id"].value_counts()[lambda x: x > 1].index
         for ord_id in duplicados:
             reembolsos_orden = reembolsos[reembolsos["order_id"] == ord_id]
             perdida_duplicada = abs(reembolsos_orden.iloc[1]["monto_liquidado"])
             fugas_totales += perdida_duplicada
             discrepancias.append({
-                "Orden": ord_id,
+                "Orden": str(ord_id),
                 "Problema": "Reembolso procesado por duplicado",
                 "Monto": f"${perdida_duplicada:.2f} USD"
             })
@@ -193,15 +191,35 @@ if archivo_ventas and archivo_pasarela:
         st.error(f"### Dinero Total Recuperable: ${fugas_totales:.2f} USD")
 
         if discrepancias:
-            st.dataframe(pd.DataFrame(discrepancias), use_container_width=True)
+            st.info("💡 **Vista previa gratuita:** Mostrando las 2 primeras anomalías encontradas. Adquirí el informe completo para desbloquear el detalle total de pedidos y el documento formal para reclamo ante la pasarela.")
             
-            pdf_data = generar_pdf_bytes(filas_pdf, fugas_totales)
-            st.download_button(
-                label="📥 Descargar Informe Ejecutivo en PDF",
-                data=pdf_data,
-                file_name="Auditoria_Fugas_Caja.pdf",
-                mime="application/pdf"
+            df_muestra = pd.DataFrame(discrepancias).head(2)
+            st.dataframe(df_muestra, use_container_width=True)
+
+            st.markdown("---")
+            url_checkout = "https://nicoverse682.gumroad.com/l/auditoria?wanted=true"
+            st.markdown(
+                f'<a href="{url_checkout}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #E63946; color: white; text-align: center; text-decoration: none; font-size: 16px; font-weight: bold; border-radius: 8px;">💳 Desbloquear Informe Completo y PDF ($49 USD)</a>',
+                unsafe_allow_html=True
             )
+            
+            st.write("")
+            token_acceso = st.text_input("Ingresá tu clave de licencia o código de compra recibido por correo:", type="password")
+
+            if token_acceso:
+                es_valido, mensaje = validar_licencia_gumroad(token_acceso, permalink="auditoria")
+                if es_valido:
+                    st.success(mensaje)
+                    st.dataframe(pd.DataFrame(discrepancias), use_container_width=True)
+                    pdf_data = generar_pdf_bytes(filas_pdf, fugas_totales)
+                    st.download_button(
+                        label="📥 Descargar Informe Ejecutivo Completo en PDF",
+                        data=pdf_data,
+                        file_name="Auditoria_Fugas_Caja_Completa.pdf",
+                        mime="application/pdf"
+                    )
+                else:
+                    st.error(f"Acceso denegado: {mensaje}")
         else:
             st.success("No se detectaron discrepancias en las transacciones analizadas.")
 
