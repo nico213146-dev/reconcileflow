@@ -17,7 +17,7 @@ st.markdown("""
     [data-testid="stToolbar"] {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Fondo general un poco más oscuro para que contraste el blanco */
+    /* Fondo general */
     .stApp {
         background-color: #F0F2F6;
     }
@@ -37,6 +37,10 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+st.title("🛡️ ReconcileFlow")
+st.subheader("Auditoría y Conciliación Multicanal (Shopify / Stripe / CSV)")
+st.markdown("Subí tus reportes de ventas y pasarela de cobro para auditar cobros no depositados, tasas excesivas y reembolsos duplicados.")
 
 col1, col2 = st.columns(2)
 with col1:
