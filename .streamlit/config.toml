@@ -1,1 +1,15 @@
+[theme]
+# Color de los acentos (botones principales, barras de carga, íconos)
+primaryColor = "#E63946"
 
+# Color de fondo general de toda la página
+backgroundColor = "#F0F2F6"
+
+# Color de fondo de las cajas de archivos y tablas
+secondaryBackgroundColor = "#FFFFFF"
+
+# Color principal del texto (azul marino corporativo en lugar de negro)
+textColor = "#1A2B4C"
+
+# Tipografía moderna
+font = "sans serif"
