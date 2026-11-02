@@ -41,7 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 3. Encabezados de la aplicación
-st.title("🛡️ ReconcileFlow")
+st.title("🔬 ReconcileFlow")
 st.subheader("Auditoría y Conciliación Multicanal (Shopify / Stripe / CSV)")
 st.markdown("Subí tus reportes de ventas y pasarela de cobro para auditar cobros no depositados, tasas excesivas y reembolsos duplicados.")
 
