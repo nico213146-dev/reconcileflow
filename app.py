@@ -14,19 +14,14 @@ st.set_page_config(page_title="ReconcileFlow - Auditoría B2B", layout="centered
 # 2. Inyección de CSS premium
 st.markdown("""
     <style>
-    /* Ocultar menú superior y pie de página en Streamlit moderno */
+    /* Ocultar menú superior y pie de página */
     [data-testid="stHeader"] {visibility: hidden;}
     [data-testid="stToolbar"] {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Fondo general un poco más oscuro para que contraste el blanco */
-    .stApp {
-        background-color: #F0F2F6;
-    }
-    
     /* Estilo del botón de pago */
     .stButton>button {
-        background-color: #1A2B4C;
+        background-color: #E63946;
         color: white;
         border-radius: 8px;
         border: none;
@@ -34,6 +29,11 @@ st.markdown("""
         font-weight: bold;
     }
     .stButton>button:hover {
+        background-color: #00D26A;
+        color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)    .stButton>button:hover {
         background-color: #E63946;
         color: white;
     }
