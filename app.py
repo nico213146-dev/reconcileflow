@@ -8,18 +8,16 @@ import io
 import re
 import requests
 
-# 1. Configuración de página (siempre va primero)
+# 1. Configuración de página
 st.set_page_config(page_title="ReconcileFlow - Auditoría B2B", layout="centered")
 
-# 2. Inyección de CSS premium
+# 2. Inyección de CSS (Oculta menú de Streamlit y da estilo al botón)
 st.markdown("""
     <style>
-    /* Ocultar menú superior y pie de página */
     [data-testid="stHeader"] {visibility: hidden;}
     [data-testid="stToolbar"] {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Estilo del botón de pago */
     .stButton>button {
         background-color: #E63946;
         color: white;
@@ -30,11 +28,6 @@ st.markdown("""
     }
     .stButton>button:hover {
         background-color: #00D26A;
-        color: white;
-    }
-    </style>
-""", unsafe_allow_html=True)    .stButton>button:hover {
-        background-color: #E63946;
         color: white;
     }
     </style>
@@ -85,7 +78,7 @@ def procesar_ventas(df):
         df_norm["order_id"] = df[columnas["order_id"]].apply(normalizar_id)
         df_norm["monto_bruto"] = df[columnas["monto_bruto"]].apply(limpiar_monto)
         return df_norm
-    raise ValueError("El archivo de ventas no contiene las columnas necesarias (se requiere 'Name'/'Total' de Shopify o 'order_id'/'monto_bruto').")
+    raise ValueError("El archivo de ventas no contiene las columnas necesarias.")
 
 def procesar_pasarela(df):
     columnas = {c.lower().strip(): c for c in df.columns}
@@ -106,7 +99,7 @@ def procesar_pasarela(df):
         df_norm["comision_cobrada"] = df[columnas["comision_cobrada"]].apply(limpiar_monto)
         df_norm["tipo"] = df[columnas.get("tipo", "tipo")].str.lower() if "tipo" in columnas else "cobro"
         return df_norm
-    raise ValueError("El archivo de pasarela no contiene las columnas necesarias (se requiere reporte estándar de Stripe o columnas 'order_id'/'monto_liquidado'/'comision_cobrada').")
+    raise ValueError("El archivo de pasarela no contiene las columnas necesarias.")
 
 # 6. Funciones de Validación (Gumroad) y PDF
 def validar_licencia_gumroad(license_key, permalink="auditoria"):
@@ -125,7 +118,7 @@ def validar_licencia_gumroad(license_key, permalink="auditoria"):
         if datos.get("success") is True:
             return True, "Licencia oficial verificada correctamente."
         else:
-            return False, datos.get("message", "Clave no válida o no encontrada en el sistema.")
+            return False, datos.get("message", "Clave no válida o no encontrada.")
     except Exception as e:
         return False, f"Error al contactar con el servidor de licencias: {e}"
 
@@ -202,7 +195,7 @@ if archivo_ventas and archivo_pasarela:
                 fugas_totales += diferencia
                 discrepancias.append({
                     "Orden": str(row["order_id"]),
-                    "Problema": f"Sobrecargo tasa (Esperado: ${comision_esperada:.2f} | Real: ${comision_real:.2f})",
+                    "Problema": f"Sobrecargo tasa (Esperado: ${comision_esperada:.2f} \vert{} Real:${comision_real:.2f})",
                     "Monto": f"${diferencia:.2f} USD"
                 })
                 filas_pdf.append([str(row["order_id"]), f"Sobrecargo tasa (Cobrado: ${comision_real:.2f})", f"+${diferencia:.2f} USD"])
@@ -228,34 +221,4 @@ if archivo_ventas and archivo_pasarela:
             st.info("💡 **Vista previa gratuita:** Mostrando las 2 primeras anomalías encontradas. Adquirí el informe completo para desbloquear el detalle total de pedidos y el documento formal para reclamo ante la pasarela.")
             
             df_muestra = pd.DataFrame(discrepancias).head(2)
-            st.dataframe(df_muestra, use_container_width=True)
-
-            st.markdown("---")
-            url_checkout = "https://nicoverse682.gumroad.com/l/auditoria?wanted=true"
-            st.markdown(
-                f'<a href="{url_checkout}" target="_blank" style="display: inline-block; padding: 14px 28px; background-color: #E63946; color: white; text-align: center; text-decoration: none; font-size: 16px; font-weight: bold; border-radius: 8px;">💳 Desbloquear Informe Completo y PDF ($49 USD)</a>',
-                unsafe_allow_html=True
-            )
-            
-            st.write("")
-            token_acceso = st.text_input("Ingresá tu clave de licencia o código de compra recibido por correo:", type="password")
-
-            if token_acceso:
-                es_valido, mensaje = validar_licencia_gumroad(token_acceso, permalink="auditoria")
-                if es_valido:
-                    st.success(mensaje)
-                    st.dataframe(pd.DataFrame(discrepancias), use_container_width=True)
-                    pdf_data = generar_pdf_bytes(filas_pdf, fugas_totales)
-                    st.download_button(
-                        label="📥 Descargar Informe Ejecutivo Completo en PDF",
-                        data=pdf_data,
-                        file_name="Auditoria_Fugas_Caja_Completa.pdf",
-                        mime="application/pdf"
-                    )
-                else:
-                    st.error(f"Acceso denegado: {mensaje}")
-        else:
-            st.success("No se detectaron discrepancias en las transacciones analizadas.")
-
-    except Exception as e:
-        st.error(f"Error procesando los archivos: {e}")
+            st.dataframe(df_muestra, use_container_width=True
