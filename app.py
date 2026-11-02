@@ -8,8 +8,10 @@ import io
 import re
 import requests
 
+# 1. Configuración de página (siempre va primero)
 st.set_page_config(page_title="ReconcileFlow - Auditoría B2B", layout="centered")
 
+# 2. Inyección de CSS premium
 st.markdown("""
     <style>
     /* Ocultar menú superior y pie de página en Streamlit moderno */
@@ -17,7 +19,7 @@ st.markdown("""
     [data-testid="stToolbar"] {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Fondo general */
+    /* Fondo general un poco más oscuro para que contraste el blanco */
     .stApp {
         background-color: #F0F2F6;
     }
@@ -38,16 +40,19 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# 3. Encabezados de la aplicación
 st.title("🛡️ ReconcileFlow")
 st.subheader("Auditoría y Conciliación Multicanal (Shopify / Stripe / CSV)")
 st.markdown("Subí tus reportes de ventas y pasarela de cobro para auditar cobros no depositados, tasas excesivas y reembolsos duplicados.")
 
+# 4. Carga de archivos
 col1, col2 = st.columns(2)
 with col1:
     archivo_ventas = st.file_uploader("1. Reporte de Ventas (Shopify / Genérico)", type=["csv"])
 with col2:
     archivo_pasarela = st.file_uploader("2. Liquidaciones (Stripe / Genérico)", type=["csv"])
 
+# 5. Funciones de procesamiento y normalización
 def limpiar_monto(valor):
     if pd.isna(valor):
         return 0.0
@@ -103,8 +108,8 @@ def procesar_pasarela(df):
         return df_norm
     raise ValueError("El archivo de pasarela no contiene las columnas necesarias (se requiere reporte estándar de Stripe o columnas 'order_id'/'monto_liquidado'/'comision_cobrada').")
 
+# 6. Funciones de Validación (Gumroad) y PDF
 def validar_licencia_gumroad(license_key, permalink="auditoria"):
-    """Consulta la API de Gumroad para verificar si la clave de compra es legítima."""
     clave_limpia = license_key.strip()
     if clave_limpia.upper() == "AUDIT2026":
         return True, "Acceso concedido vía clave maestra."
@@ -160,6 +165,7 @@ def generar_pdf_bytes(filas_tabla, total_fugas):
     buffer.seek(0)
     return buffer
 
+# 7. Lógica principal de la aplicación
 if archivo_ventas and archivo_pasarela:
     try:
         raw_ventas = pd.read_csv(archivo_ventas)
@@ -172,7 +178,7 @@ if archivo_ventas and archivo_pasarela:
         discrepancias = []
         filas_pdf = [["Orden", "Tipo de Anomalía", "Impacto Económico"]]
 
-        # 1. Ventas no liquidadas
+        # Validación 1: Ventas no liquidadas
         ventas_cobradas = pasarela[pasarela["tipo"] == "cobro"]["order_id"].unique()
         no_liquidadas = ventas[~ventas["order_id"].isin(ventas_cobradas)]
         for _, row in no_liquidadas.iterrows():
@@ -185,7 +191,7 @@ if archivo_ventas and archivo_pasarela:
             })
             filas_pdf.append([str(row["order_id"]), "Venta no liquidada / Fondo retenido", f"+${perdida:.2f} USD"])
 
-        # 2. Sobrecargo de comisiones
+        # Validación 2: Sobrecargos
         cobros_pasarela = pasarela[pasarela["tipo"] == "cobro"]
         cruce_comisiones = pd.merge(cobros_pasarela, ventas, on="order_id")
         for _, row in cruce_comisiones.iterrows():
@@ -201,7 +207,7 @@ if archivo_ventas and archivo_pasarela:
                 })
                 filas_pdf.append([str(row["order_id"]), f"Sobrecargo tasa (Cobrado: ${comision_real:.2f})", f"+${diferencia:.2f} USD"])
 
-        # 3. Reembolsos duplicados
+        # Validación 3: Reembolsos duplicados
         reembolsos = pasarela[pasarela["tipo"] == "reembolso"]
         duplicados = reembolsos["order_id"].value_counts()[lambda x: x > 1].index
         for ord_id in duplicados:
